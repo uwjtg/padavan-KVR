@@ -46,10 +46,10 @@ jobs:
           sed -i 's/size_tmp="24M"/size_tmp="30M"/g' /opt/rt-n56u/trunk/user/scripts/dev_init.sh
           sed -i 's/mtd_part_size=65536/mtd_part_size=14680064/g' /opt/rt-n56u/trunk/user/scripts/mtd_storage.sh
 
-          # 自动补全board.h（核心修复：无board.h时自动创建）
+          # 自动补全board.h（修复EOF闭合符无空格）
           if [ ! -f /opt/rt-n56u/trunk/configs/boards/${DEVICE}/board.h ]; then
             echo "=== 自动创建WIA3300-10的board.h ==="
-            cat > /opt/rt-n56u/trunk/configs/boards/${DEVICE}/board.h << EOF
+            cat > /opt/rt-n56u/trunk/configs/boards/${DEVICE}/board.h <<EOF
 #ifndef __BOARD_H__
 #define __BOARD_H__
 #define FLASH_SIZE 0x2000000
@@ -64,7 +64,7 @@ jobs:
 EOF
           fi
 
-          # 自动复制关键文件到目标路径（替代手动移动）
+          # 自动复制关键文件到目标路径
           cp -f /opt/rt-n56u/trunk/configs/boards/${DEVICE}/kernel-${KERNEL}.x.config /opt/rt-n56u/trunk/configs/boards/kernel-${KERNEL}.x.config
           cp -f /opt/rt-n56u/trunk/configs/boards/${DEVICE}/board.h /opt/rt-n56u/trunk/configs/boards/board.h
 
@@ -245,6 +245,7 @@ EOF
           echo "build_time=$(date '+%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
           echo "tag=WIA3300-10_$(date '+%Y%m%d')" >> $GITHUB_ENV
 
+      # 修复：步骤名称冒号后仅1个空格
       - name: Upload Firmware Artifact
         uses: actions/upload-artifact@v4
         with:
