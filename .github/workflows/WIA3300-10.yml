@@ -1,7 +1,6 @@
 name: 原版WIA3300-10
 on: 
   workflow_dispatch:
-#设置仓库的读写权限
 permissions:
   contents: write
 env:
@@ -145,6 +144,8 @@ jobs:
         sed -i '/CONFIG_FIRMWARE_INCLUDE_NPC/d' .config
         sed -i '/CONFIG_FIRMWARE_WEBUI_HIDE_VPN/d' .config
         sed -i '/CONFIG_FIRMWARE_INCLUDE_OPENVPN/d' .config
+        sed -i '/CONFIG_FIRMWARE_INCLUDE_N2N_V3/d' .config
+        sed -i '/CONFIG_FIRMWARE_INCLUDE_N2N_V3_SUPERNODE/d' .config
         # 清除默认配置结束
         ######################################################################
         #以下选项是定义你需要的功能，（y=集成,n=忽略），重新写入到.config文件
@@ -152,7 +153,7 @@ jobs:
         ##系统组件
         #启用 IPv6 支持
         echo "CONFIG_FIRMWARE_ENABLE_IPV6=y" >> .config
-        #启用 USB 支持（已修正为启用）
+        #启用 USB 支持
         echo "CONFIG_FIRMWARE_ENABLE_USB=y" >> .config
         #通过 Paragon 的 "ufsd" 驱动启用 NTFS 文件系统支持。约 0.4MB
         echo "CONFIG_FIRMWARE_ENABLE_UFSD=n" >> .config
@@ -303,6 +304,10 @@ jobs:
         ## MENTOHUST校园认证 已删除 请查看/trunk/user/httpd/common.h
         echo "CONFIG_FIRMWARE_INCLUDE_MENTOHUST=n" >> .config
         ##################################
+        # N2N V3 插件
+        echo "CONFIG_FIRMWARE_INCLUDE_N2N_V3=y" >> .config  ## N2N V3 普通节点
+        echo "CONFIG_FIRMWARE_INCLUDE_N2N_V3_SUPERNODE=y" >> .config  ## N2N V3 超级节点
+        # 其他功能
         echo "CONFIG_FIRMWARE_INCLUDE_FRPC=y" >> .config  ## FRPC 客户端 约8k
         echo "CONFIG_FIRMWARE_INCLUDE_FRPS=y" >> .config  ## FRPS 服务端 约8k
         echo "CONFIG_FIRMWARE_INCLUDE_WIREGUARD=y" >> .config  ## wireguard 约1M
