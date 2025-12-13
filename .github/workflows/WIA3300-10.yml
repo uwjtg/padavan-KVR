@@ -1,4 +1,4 @@
-name: WIA3300-10 固件编译
+name: WIA3300-10 固件编译（无软链接版）
 on: 
   workflow_dispatch:  # 手动触发编译
 permissions:
@@ -51,7 +51,7 @@ jobs:
           sed -i 's/size_tmp="24M"/size_tmp="30M"/g' /opt/rt-n56u/trunk/user/scripts/dev_init.sh
           sed -i 's/mtd_part_size=65536/mtd_part_size=14680064/g' /opt/rt-n56u/trunk/user/scripts/mtd_storage.sh
 
-      # 步骤5：编译固件（核心修复：软链接+路径适配）
+      # 步骤5：编译固件（无软链接，需手动提前移动文件）
       - name: Build Firmware
         env:
           DEVICE: WIA3300-10
@@ -59,11 +59,21 @@ jobs:
         run: |
           cd /opt/rt-n56u/trunk
 
-          # 验证模板文件存在
+          # 验证关键文件是否已手动移动到位（核心检查）
+          echo "=== 验证手动移动的文件 ==="
+          if [ ! -f configs/boards/kernel-${KERNEL}.x.config ]; then
+            echo "错误：kernel-${KERNEL}.x.config 未移动到 configs/boards/ 根目录！"
+            exit 1
+          fi
+          if [ ! -f configs/boards/board.h ]; then
+            echo "错误：board.h 未移动到 configs/boards/ 根目录！"
+            exit 1
+          fi
           if [ ! -f configs/templates/${DEVICE}.config ]; then
             echo "错误：模板文件 configs/templates/${DEVICE}.config 未找到！"
             exit 1
           fi
+          echo "所有关键文件验证通过！"
 
           # 加载模板配置
           cp -f configs/templates/${DEVICE}.config .config
@@ -230,15 +240,6 @@ jobs:
           echo "CONFIG_FIRMWARE_INCLUDE_SMBD=n" >> .config
           echo "CONFIG_FIRMWARE_INCLUDE_FTPD=n" >> .config
           echo "CONFIG_FIRMWARE_INCLUDE_SHADOWSOCKS=n" >> .config
-
-          # 关键修复：软链接设备配置文件到脚本默认路径（强制覆盖）
-          ln -sf /opt/rt-n56u/trunk/configs/boards/${DEVICE}/kernel-${KERNEL}.x.config /opt/rt-n56u/trunk/configs/boards/kernel-${KERNEL}.x.config
-          ln -sf /opt/rt-n56u/trunk/configs/boards/${DEVICE}/board.h /opt/rt-n56u/trunk/configs/boards/board.h
-
-          # 验证软链接是否生效
-          echo "=== 验证软链接 ==="
-          ls -l /opt/rt-n56u/trunk/configs/boards/kernel-${KERNEL}.x.config
-          ls -l /opt/rt-n56u/trunk/configs/boards/board.h
 
           # 清理编译缓存并编译固件
           sudo ./clear_tree
