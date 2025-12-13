@@ -341,13 +341,13 @@ jobs:
         #echo "CONFIG_FIRMWARE_INCLUDE_TROJAN=n" >> .config #无需集成会在线下载
         #echo "CONFIG_FIRMWARE_INCLUDE_SSOBFS=n" >> .config # simple-obfs混淆插件
         #################################################################################
-        # 软链接内核配置文件（原有的）
-        ln -s /opt/rt-n56u/trunk/configs/boards/WIA3300-10/kernel-3.4.x.config /opt/rt-n56u/trunk/configs/boards/kernel-3.4.x.config
-        # 新增：软链接设备头文件board.h
-        ln -s /opt/rt-n56u/trunk/configs/boards/WIA3300-10/board.h /opt/rt-n56u/trunk/configs/boards/board.h
-        
-        sudo ./clear_tree
-        sudo ./build_firmware_modify $TNAME 0
+        # 软链接内核配置文件
+        ln -sf /opt/rt-n56u/trunk/configs/boards/WIA3300-10/kernel-3.4.x.config /opt/rt-n56u/trunk/configs/boards/kernel-3.4.x.config
+        # 软链接设备头文件（使用-f强制覆盖旧链接）
+        ln -sf /opt/rt-n56u/trunk/configs/boards/WIA3300-10/board.h /opt/rt-n56u/trunk/configs/boards/board.h
+
+sudo ./clear_tree
+sudo ./build_firmware_modify $TNAME 0
         sudo mv -f images/*.trx /opt/images/
         cp -f .config /opt/images/${TNAME}.config
         echo "build_time=$(date '+%Y年%m月%d日%H:%M:%S' | jq -sRr @uri)" >> $GITHUB_ENV
