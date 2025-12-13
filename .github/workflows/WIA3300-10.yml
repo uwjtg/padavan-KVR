@@ -1,112 +1,74 @@
-name: WIA3300-10 固件编译（无错误+中文注释版）
+name: WIA3300-10 固件编译（手动board.h版）
 on: 
-  workflow_dispatch:  # 手动触发编译（点击Run workflow即可执行）
+  workflow_dispatch:
 permissions:
-  contents: write  # 授予发布Release的权限
+  contents: write
 env:
-  TZ: Asia/Shanghai  # 配置时区为上海，避免编译时间错乱
+  TZ: Asia/Shanghai
 jobs:
   build-firmware:
-    runs-on: ubuntu-22.04  # 使用Ubuntu 22.04编译环境（兼容性最佳）
+    runs-on: ubuntu-22.04
     steps:
-      # 步骤1：拉取GitHub仓库代码到编译服务器
       - name: 拉取仓库代码
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1  # 仅拉取最新代码，加快速度
+          fetch-depth: 1
 
-      # 步骤2：安装编译所需的依赖包
       - name: 安装编译依赖
         env:
-          DEBIAN_FRONTEND: noninteractive  # 禁用交互模式，自动确认安装
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          # 更新软件源并升级系统
           sudo apt update && sudo apt upgrade -y
-          # 安装编译必备工具（编译器、依赖库、压缩工具等）
           sudo apt install -y unzip libtool-bin curl cmake gperf gawk flex bison nano xxd fakeroot \
           cpio git python3-docutils gettext automake autopoint texinfo build-essential help2man \
           pkg-config zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev libncurses5-dev libltdl-dev wget
-          # 设置系统时区为上海
           sudo timedatectl set-timezone Asia/Shanghai
-          echo "✅ 编译依赖安装完成"
 
-      # 步骤3：安装UPX压缩工具（用于压缩固件体积）
-      - name: 安装UPX压缩工具
+      - name: 安装 UPX 压缩工具
         uses: crazy-max/ghaction-upx@v3
         with:
-          version: v4.2.4  # 指定稳定版本
-          install-only: true  # 仅安装不执行压缩
+          version: v4.2.4
+          install-only: true
 
-      # 步骤4：克隆源码并初始化硬件配置
-      - name: 克隆源码并初始化硬件配置
+      - name: 克隆源码并初始化配置
         env:
-          DEVICE: WIA3300-10  # 设备型号
-          KERNEL: 3.4         # 内核版本
+          DEVICE: WIA3300-10
+          KERNEL: 3.4
         run: |
-          # 克隆源码到编译目录（/opt/rt-n56u）
+          # 克隆源码
           git clone --depth=1 https://github.com/${GITHUB_REPOSITORY}.git /opt/rt-n56u
-          # 进入工具链目录下载编译工具
           cd /opt/rt-n56u/toolchain-mipsel
           sh dl_toolchain.sh
-          # 创建固件输出目录
           mkdir -p /opt/images
-          echo "✅ 源码克隆完成，工具链下载中..."
 
-          # 调整存储配置（适配WIA3300-10：32MB闪存 + 256MB内存）
+          # 调整存储配置
           sed -i 's/SIZ=0x80000/SIZ=0x500000/g' /opt/rt-n56u/trunk/configs/boards/${DEVICE}/kernel-${KERNEL}.config
           sed -i 's/size_etc="6M"/size_etc="5M"/g' /opt/rt-n56u/trunk/user/scripts/dev_init.sh
           sed -i 's/size_tmp="24M"/size_tmp="30M"/g' /opt/rt-n56u/trunk/user/scripts/dev_init.sh
           sed -i 's/mtd_part_size=65536/mtd_part_size=14680064/g' /opt/rt-n56u/trunk/user/scripts/mtd_storage.sh
-          echo "✅ 存储配置调整完成"
 
-          # 自动创建缺失的board.h文件（硬件参数头文件）
-          if [ ! -f /opt/rt-n56u/trunk/configs/boards/${DEVICE}/board.h ]; then
-            echo "⚠️ 检测到board.h缺失，自动创建适配版本..."
-            # 生成适配WIA3300-10的board.h（EOF顶行无空格，严格闭合）
-            cat > /opt/rt-n56u/trunk/configs/boards/${DEVICE}/board.h <<EOF
-#ifndef __BOARD_H__
-#define __BOARD_H__
-#define FLASH_SIZE 0x2000000  // 32MB闪存（0x2000000 = 32*1024*1024）
-#define RAM_SIZE 0x10000000   // 256MB内存（0x10000000 = 256*1024*1024）
-#define HW_TYPE "WIA3300-10"  // 设备型号
-#define HW_VENDOR "Generic"   // 厂商名称
-#define HW_REV "v1.0"         // 硬件版本
-#define HW_GPIO_LED_POWER 0   // 电源灯GPIO引脚（默认值，可根据实际修改）
-#define HW_GPIO_LED_NETWORK 0 // 网络灯GPIO引脚（默认值，可根据实际修改）
-#define HW_GPIO_BUTTON_RESET 0// 复位键GPIO引脚（默认值，可根据实际修改）
-#endif
-EOF
-          fi
-          echo "✅ board.h文件准备完成"
-
-          # 复制关键文件到编译脚本默认读取路径
+          # 复制关键文件（手动上传的board.h已存在）
           cp -f /opt/rt-n56u/trunk/configs/boards/${DEVICE}/kernel-${KERNEL}.config /opt/rt-n56u/trunk/configs/boards/kernel-${KERNEL}.config
           cp -f /opt/rt-n56u/trunk/configs/boards/${DEVICE}/board.h /opt/rt-n56u/trunk/configs/boards/board.h
-          echo "✅ 关键文件复制完成"
 
-      # 步骤5：编译固件核心流程
       - name: 编译固件
         env:
           DEVICE: WIA3300-10
           KERNEL: 3.4
         run: |
-          # 进入编译主目录
           cd /opt/rt-n56u/trunk
 
-          # 前置检查：验证模板文件是否存在（缺失则终止编译）
+          # 验证模板文件
           if [ ! -f configs/templates/${DEVICE}.config ]; then
-            echo "❌ 错误：模板文件 configs/templates/${DEVICE}.config 缺失！"
+            echo "错误：模板文件缺失！"
             exit 1
           fi
-          echo "✅ 模板文件验证通过"
 
-          # 加载设备模板配置
+          # 加载配置
           cp -f configs/templates/${DEVICE}.config .config
-          # 启用OpenSSL SSL支持（修复部分网络功能报错）
           sed -i 's/CONFIG_FIRMWARE_INCLUDE_OPENSSL_EXE=n/CONFIG_FIRMWARE_INCLUDE_OPENSSL_EXE=y/g' .config
-          echo "✅ 模板配置加载完成"
 
-          # 清除默认配置（避免与自定义配置冲突）
+          # 清除默认配置
           sed -i '/CONFIG_FIRMWARE_ENABLE_IPV6/d' .config
           sed -i '/CONFIG_FIRMWARE_ENABLE_USB/d' .config
           sed -i '/CONFIG_FIRMWARE_ENABLE_UFSD/d' .config
@@ -198,104 +160,77 @@ EOF
           sed -i '/CONFIG_FIRMWARE_INCLUDE_SSOBFS/d' .config
           sed -i '/CONFIG_FIRMWARE_INCLUDE_NPC/d' .config
           sed -i '/CONFIG_FIRMWARE_WEBUI_HIDE_VPN/d' .config
-          echo "✅ 默认配置清理完成"
 
-          # 自定义功能配置（按需启用/禁用）
-          ## 基础系统功能
-          echo "CONFIG_FIRMWARE_ENABLE_IPV6=y" >> .config          # 启用IPv6
-          echo "CONFIG_FIRMWARE_ENABLE_USB=y" >> .config          # 启用USB（必开，支持U盘/USB网卡）
-          echo "CONFIG_FIRMWARE_ENABLE_SWAP=y" >> .config         # 启用SWAP（提升内存可用量）
-          echo "CONFIG_FIRMWARE_ENABLE_UFSD=n" >> .config         # 禁用UFSD（冗余文件系统）
-          echo "CONFIG_FIRMWARE_ENABLE_FAT=n" >> .config          # 禁用FAT（冗余文件系统）
-          echo "CONFIG_FIRMWARE_ENABLE_EXFAT=n" >> .config        # 禁用EXFAT（冗余文件系统）
-          echo "CONFIG_FIRMWARE_ENABLE_EXT2=n" >> .config         # 禁用EXT2（冗余文件系统）
-          echo "CONFIG_FIRMWARE_ENABLE_EXT3=n" >> .config         # 禁用EXT3（冗余文件系统）
-          echo "CONFIG_FIRMWARE_ENABLE_EXT4=n" >> .config         # 禁用EXT4（冗余文件系统）
+          # 配置核心功能
+          echo "CONFIG_FIRMWARE_ENABLE_IPV6=y" >> .config
+          echo "CONFIG_FIRMWARE_ENABLE_USB=y" >> .config
+          echo "CONFIG_FIRMWARE_ENABLE_SWAP=y" >> .config
+          echo "CONFIG_FIRMWARE_ENABLE_UFSD=n" >> .config
+          echo "CONFIG_FIRMWARE_ENABLE_FAT=n" >> .config
+          echo "CONFIG_FIRMWARE_ENABLE_EXFAT=n" >> .config
+          echo "CONFIG_FIRMWARE_ENABLE_EXT2=n" >> .config
+          echo "CONFIG_FIRMWARE_ENABLE_EXT3=n" >> .config
+          echo "CONFIG_FIRMWARE_ENABLE_EXT4=n" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_XFRM=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_QOS=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_CIFS=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_TCPDUMP=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_DDNS_SSL=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_HTTPS=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_SFTP=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_DROPBEAR=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_OPENSSH=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_OPENVPN=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_CURL=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_FRPC=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_FRPS=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_WIREGUARD=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_ZEROTIER=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_ALIDDNS=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_VNTCLI=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_VNTS=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_N2N_V3=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_N2N_V3_SUPERNODE=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_TTYD=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_LRZSZ=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_HTOP=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_NANO=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_IPERF3=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_MTR=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_SOCAT=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_TRANSMISSION=n" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_ARIA=n" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_MINIDLNA=n" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_SMBD=n" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_FTPD=n" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_SHADOWSOCKS=n" >> .config
 
-          ## 网络核心功能
-          echo "CONFIG_FIRMWARE_INCLUDE_XFRM=y" >> .config        # 启用XFRM（VPN基础依赖）
-          echo "CONFIG_FIRMWARE_INCLUDE_QOS=y" >> .config         # 启用QOS（网速限制/优先级）
-          echo "CONFIG_FIRMWARE_INCLUDE_CIFS=y" >> .config        # 启用CIFS（挂载SMB共享）
-          echo "CONFIG_FIRMWARE_INCLUDE_TCPDUMP=y" >> .config     # 启用TCPDUMP（网络抓包）
-          echo "CONFIG_FIRMWARE_INCLUDE_DDNS_SSL=y" >> .config    # 启用DDNS SSL（加密DDNS通信）
-          echo "CONFIG_FIRMWARE_INCLUDE_HTTPS=y" >> .config       # 启用HTTPS（WebUI/API加密）
-          echo "CONFIG_FIRMWARE_INCLUDE_SFTP=y" >> .config        # 启用SFTP（安全文件传输）
-          echo "CONFIG_FIRMWARE_INCLUDE_DROPBEAR=y" >> .config    # 启用Dropbear（SSH服务）
-          echo "CONFIG_FIRMWARE_INCLUDE_OPENSSH=y" >> .config     # 启用OpenSSH（增强SSH）
-          echo "CONFIG_FIRMWARE_INCLUDE_OPENVPN=y" >> .config     # 启用OpenVPN（经典VPN）
-          echo "CONFIG_FIRMWARE_INCLUDE_CURL=y" >> .config        # 启用CURL（网络请求工具）
+          # 编译固件
+          sudo ./clear_tree
+          sudo ./build_firmware_modify ${DEVICE} 0
 
-          ## 穿透/组网功能（核心需求）
-          echo "CONFIG_FIRMWARE_INCLUDE_FRPC=y" >> .config        # 启用FRP客户端（内网穿透）
-          echo "CONFIG_FIRMWARE_INCLUDE_FRPS=y" >> .config        # 启用FRP服务端（内网穿透）
-          echo "CONFIG_FIRMWARE_INCLUDE_WIREGUARD=y" >> .config   # 启用WireGuard（新一代VPN）
-          echo "CONFIG_FIRMWARE_INCLUDE_ZEROTIER=y" >> .config    # 启用Zerotier（异地组网）
-          echo "CONFIG_FIRMWARE_INCLUDE_ALIDDNS=y" >> .config     # 启用阿里DDNS（动态域名）
-          echo "CONFIG_FIRMWARE_INCLUDE_VNTCLI=y" >> .config      # 启用VNT客户端（组网）
-          echo "CONFIG_FIRMWARE_INCLUDE_VNTS=y" >> .config        # 启用VNT服务端（组网）
-          echo "CONFIG_FIRMWARE_INCLUDE_N2N_V3=y" >> .config      # 启用N2N V3（P2P组网）
-          echo "CONFIG_FIRMWARE_INCLUDE_N2N_V3_SUPERNODE=y" >> .config # 启用N2N超级节点
-
-          ## 工具类功能
-          echo "CONFIG_FIRMWARE_INCLUDE_TTYD=y" >> .config        # 启用TTYD（Web终端）
-          echo "CONFIG_FIRMWARE_INCLUDE_LRZSZ=y" >> .config       # 启用LRZSZ（文件传输）
-          echo "CONFIG_FIRMWARE_INCLUDE_HTOP=y" >> .config        # 启用HTOP（系统监控）
-          echo "CONFIG_FIRMWARE_INCLUDE_NANO=y" >> .config        # 启用NANO（文本编辑器）
-          echo "CONFIG_FIRMWARE_INCLUDE_IPERF3=y" >> .config      # 启用IPERF3（网速测试）
-          echo "CONFIG_FIRMWARE_INCLUDE_MTR=y" >> .config         # 启用MTR（路由追踪）
-          echo "CONFIG_FIRMWARE_INCLUDE_SOCAT=y" >> .config       # 启用SOCAT（端口转发）
-
-          ## 禁用冗余功能（减小固件体积）
-          echo "CONFIG_FIRMWARE_INCLUDE_TRANSMISSION=n" >> .config # 禁用Transmission（下载工具）
-          echo "CONFIG_FIRMWARE_INCLUDE_ARIA=n" >> .config        # 禁用Aria2（下载工具）
-          echo "CONFIG_FIRMWARE_INCLUDE_MINIDLNA=n" >> .config    # 禁用MiniDLNA（媒体服务器）
-          echo "CONFIG_FIRMWARE_INCLUDE_SMBD=n" >> .config        # 禁用Samba（文件共享）
-          echo "CONFIG_FIRMWARE_INCLUDE_FTPD=n" >> .config        # 禁用FTP（文件传输）
-          echo "CONFIG_FIRMWARE_INCLUDE_SHADOWSOCKS=n" >> .config # 禁用Shadowsocks（代理）
-          echo "✅ 自定义功能配置完成"
-
-          # 清理编译缓存并开始编译
-          echo "🚀 开始编译固件（预计30-60分钟）..."
-          sudo ./clear_tree  # 清理旧编译文件
-          sudo ./build_firmware_modify ${DEVICE} 0  # 执行编译
-
-          # 导出编译好的固件到输出目录
-          mv -f images/*.trx /opt/images/  # 移动固件文件（.trx为可刷写固件）
-          cp -f .config /opt/images/${DEVICE}.config  # 备份配置文件
-          echo "✅ 固件编译完成！输出路径：/opt/images/"
-
-          # 记录编译时间和版本标签（用于Release命名）
+          # 导出固件
+          mv -f images/*.trx /opt/images/
+          cp -f .config /opt/images/${DEVICE}.config
           echo "build_time=$(date '+%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
           echo "tag=WIA3300-10_$(date '+%Y%m%d')" >> $GITHUB_ENV
 
-      # 步骤6：上传固件到GitHub Artifacts（临时下载）
       - name: 上传固件产物
         uses: actions/upload-artifact@v4
         with:
-          name: WIA3300-10_固件_${{ env.build_time }}  # 产物名称（含时间戳）
-          path: /opt/images/*  # 上传所有固件文件
+          name: WIA3300-10_固件_${{ env.build_time }}
+          path: /opt/images/*
 
-      # 步骤7：发布固件到GitHub Release（永久保存）
       - name: 发布固件到Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.tag }}  # Release标签（日期）
-          release_name: WIA3300-10 固件_${{ env.build_time }}  # Release名称
-          body: |  # Release描述
-            ### 📌 固件信息
-            - 设备型号：WIA3300-10
+          tag_name: ${{ env.tag }}
+          release_name: WIA3300-10 固件_${{ env.build_time }}
+          body: |
+            ### 固件信息
+            - 设备：WIA3300-10
             - 编译时间：${{ env.build_time }}
             - 内核版本：3.4.x
-            - 硬件适配：32MB闪存 + 256MB内存
-
-            ### ✨ 核心功能
-            - 基础：IPv6/USB/SWAP/TTYD/HTOP
-            - 穿透：FRP客户端/服务端
-            - 组网：WireGuard/Zerotier/VNT/N2N V3
-            - 其他：阿里DDNS/QOS/IPERF3/MTR
-
-            ### 📝 说明
-            - 固件格式：.trx（可直接刷写）
-            - 配置文件：.config（编译配置备份）
-          files: /opt/images/*  # 上传到Release的文件
-          token: ${{ secrets.GITHUB_TOKEN }}  # 自动获取的GitHub令牌（无需修改）
+            - 启用功能：USB/FRP/WireGuard/Zerotier/阿里DDNS等
+          files: /opt/images/*
+          token: ${{ secrets.GITHUB_TOKEN }}
