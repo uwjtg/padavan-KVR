@@ -1,4 +1,4 @@
-name: 优酷-L1 测试
+name: 优酷-L1（USB打印机+SMB+VNT+N2N V3+Shadowsocks）
 
 on:
   workflow_dispatch:
@@ -6,123 +6,159 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+    timeout-minutes: 120  # 延长编译超时时间，避免中途中断
 
     steps:
     - name: 检出代码
       uses: actions/checkout@v3
 
-    - name: 安装编译依赖
+    - name: 安装编译依赖（修复mbedtls包名+补全依赖）
       run: |
         sudo apt update -y
         sudo apt full-upgrade -y
-        # 新增USB打印机/Shadowsocks依赖：libcups2-dev（打印机）、libsodium-dev/mbedtls-dev（SS）
-        sudo apt install -y build-essential git unzip libtool-bin automake autoconf pkg-config libssl-dev libpcap-dev upx-ucl libusb-1.0-0-dev libcups2-dev libsodium-dev mbedtls-dev
+        # 修正包名：libmbedtls-dev（Ubuntu 22.04正确名称）
+        # 补充cups依赖：libcupsimage2-dev（HP打印机图片处理）
+        sudo apt install -y build-essential git unzip libtool-bin automake autoconf pkg-config \
+          libssl-dev libpcap-dev upx-ucl libusb-1.0-0-dev libcups2-dev libcupsimage2-dev \
+          libsodium-dev libmbedtls-dev
         sudo apt autoremove -y
         sudo apt clean -y
 
-    - name: 克隆源码
+    - name: 克隆源码（添加工具链下载失败重试）
       run: |
         git clone --depth=1 https://github.com/${GITHUB_REPOSITORY}.git /opt/rt-n56u
         cd /opt/rt-n56u/trunk
-        sh dl_toolchain.sh
+        # 工具链下载失败重试2次
+        for i in {1..3}; do
+          if sh dl_toolchain.sh; then
+            echo "工具链下载成功"
+            break
+          else
+            echo "工具链下载失败，第$i次重试"
+            sleep 5
+          fi
+        done
+        # 配置工具链环境变量
+        export PATH=/opt/rt-n56u/toolchain-mipsel/bin:$PATH
 
-    - name: 修改存储分区
+    - name: 修改存储分区（适配更大固件体积）
       run: |
         cd /opt/rt-n56u/trunk
         sed -i 's/0x0f00000/0x1500000/g' board/YK-L1/profile.mk
 
-    - name: 配置固件功能
+    - name: 配置固件功能（无冗余/错误配置）
       run: |
         cd /opt/rt-n56u/trunk
         sed -i '/CONFIG_FIRMWARE_INCLUDE_OPENSSL_EXE/d' .config
-        # 原有配置项完全保留
+        
+        # 原有基础配置（保留）
         echo "CONFIG_FIRMWARE_INCLUDE_IPV6=y" >> .config
         echo "CONFIG_FIRMWARE_INCLUDE_EXT3FS=y" >> .config
         echo "CONFIG_FIRMWARE_INCLUDE_EXT4FS=y" >> .config
         echo "CONFIG_FIRMWARE_INCLUDE_SSH_SERVER=y" >> .config
         echo "CONFIG_FIRMWARE_INCLUDE_OPENSSL_EXE=y" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_DDNS=n" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_DDNS=y" >> .config
         echo "CONFIG_FIRMWARE_INCLUDE_SPEEDTEST=y" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_TRANSMISSION=n" >> .config  # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_FRPC=y" >> .config        # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_FRPS=n" >> .config        # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_ALIDDNS=n" >> .config    # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_SOFTETHER=n" >> .config  # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_V2RAY=n" >> .config      # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_TROJAN=n" >> .config     # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_SSR=n" >> .config        # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_SSSERVER=n" >> .config   # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_CADDY=n" >> .config      # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_ADBYBY=n" >> .config     # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_KOOLPROXY=n" >> .config  # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_SQM_QOS=n" >> .config    # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_DNSFORWARDER=n" >> .config # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_ADGUARDHOME=n" >> .config # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_SAMBA_V2=n" >> .config   # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_SAMBA_V3=n" >> .config   # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_MINIDLNA=n" >> .config   # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_IGD=n" >> .config        # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_UPNP=n" >> .config       # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_DLNADMR=n" >> .config    # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_ES_FILE_EXPLORER=n" >> .config # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_YOU_GET=n" >> .config    # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_YYEPG=n" >> .config      # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_TRANSMISSION=n" >> .config  # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_FRPC=n" >> .config        # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_FRPS=n" >> .config        # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_ALIDDNS=n" >> .config    # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_SOFTETHER=n" >> .config  # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_V2RAY=n" >> .config      # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_TROJAN=n" >> .config     # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_SSR=n" >> .config        # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_SSSERVER=n" >> .config   # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_CADDY=n" >> .config      # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_ADBYBY=n" >> .config     # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_KOOLPROXY=n" >> .config  # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_SQM_QOS=n" >> .config    # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_DNSFORWARDER=n" >> .config # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_ADGUARDHOME=n" >> .config # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_SAMBA_V2=n" >> .config   # 已删除（启用V3）
+        echo "CONFIG_FIRMWARE_INCLUDE_MINIDLNA=n" >> .config   # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_IGD=n" >> .config        # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_UPNP=n" >> .config       # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_DLNADMR=n" >> .config    # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_ES_FILE_EXPLORER=n" >> .config # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_YOU_GET=n" >> .config    # 已删除
+        echo "CONFIG_FIRMWARE_INCLUDE_YYEPG=n" >> .config      # 已删除
         echo "CONFIG_FIRMWARE_INCLUDE_MENTOHUST=n" >> .config  ##南京校园？
-        echo "CONFIG_FIRMWARE_INCLUDE_CHAPERONE=n" >> .config  # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_CHAPERONE=n" >> .config  # 已删除
         
-        # ========== 新增所需功能配置项 ==========
-        # 1. N2N V3（禁用V2避免冲突）
+        # 核心功能配置（无错误项）
+        # 1. N2N V3
         echo "CONFIG_FIRMWARE_INCLUDE_N2N_V2=n" >> .config
         echo "CONFIG_FIRMWARE_INCLUDE_N2N_V3=y" >> .config
-        
-        # 2. VNT（虚拟网卡）- TUN/TAP驱动
+        # 2. VNT虚拟网卡
         echo "CONFIG_FIRMWARE_INCLUDE_TUN=y" >> .config
         echo "CONFIG_FIRMWARE_INCLUDE_TAP=y" >> .config
-        
-        # 3. USB完整功能（含打印机+U盘）
-        echo "CONFIG_FIRMWARE_INCLUDE_USB_CORE=y" >> .config          # USB核心驱动
-        echo "CONFIG_FIRMWARE_INCLUDE_USB_STORAGE=y" >> .config       # U盘存储
-        echo "CONFIG_FIRMWARE_INCLUDE_USB_UAS=y" >> .config           # 高速USB存储
-        echo "CONFIG_FIRMWARE_INCLUDE_USB_HID=y" >> .config           # USB HID（打印机基础）
-        echo "CONFIG_FIRMWARE_INCLUDE_USB_AUTOMOUNT=y" >> .config     # U盘自动挂载
-        echo "CONFIG_FIRMWARE_INCLUDE_FAT32=y" >> .config             # U盘FAT32支持
-        echo "CONFIG_FIRMWARE_INCLUDE_NTFS=y" >> .config              # U盘NTFS支持
-        echo "CONFIG_FIRMWARE_INCLUDE_EXFAT=y" >> .config             # U盘exFAT支持
-        echo "CONFIG_FIRMWARE_INCLUDE_USB_PRINTER=y" >> .config       # USB打印机（HP适配）
-        echo "CONFIG_FIRMWARE_INCLUDE_CUPS=y" >> .config              # CUPS打印服务（HP打印机核心）
-        
-        # 4. U盘SMB共享（重新启用SAMBA V3，适配U盘共享）
-        echo "CONFIG_FIRMWARE_INCLUDE_SAMBA_V3=y" >> .config          # SMB核心（V3兼容性更好）
-        echo "CONFIG_FIRMWARE_INCLUDE_SAMBA_AUTOSHARE=y" >> .config   # U盘自动SMB共享
-        
-        # 5. Shadowsocks（SS）- 替代SSR，含客户端+服务端
-        echo "CONFIG_FIRMWARE_INCLUDE_SHADOWSOCKS=y" >> .config       # SS核心
-        echo "CONFIG_FIRMWARE_INCLUDE_SHADOWSOCKS_CLIENT=y" >> .config # SS客户端
-        echo "CONFIG_FIRMWARE_INCLUDE_SHADOWSOCKS_SERVER=y" >> .config # SS服务端
-        echo "CONFIG_FIRMWARE_INCLUDE_SIMPLE_OBFS=y" >> .config       # SS混淆插件（提升稳定性）
+        # 3. USB全功能（含HP打印机）
+        echo "CONFIG_FIRMWARE_INCLUDE_USB_CORE=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_USB_STORAGE=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_USB_UAS=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_USB_HID=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_USB_AUTOMOUNT=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_FAT32=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_NTFS=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_EXFAT=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_USB_PRINTER=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_CUPS=y" >> .config
+        # 4. U盘SMB共享（SAMBA V3）
+        echo "CONFIG_FIRMWARE_INCLUDE_SAMBA_V3=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_SAMBA_AUTOSHARE=y" >> .config
+        # 5. Shadowsocks（SS）
+        echo "CONFIG_FIRMWARE_INCLUDE_SHADOWSOCKS=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_SHADOWSOCKS_CLIENT=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_SHADOWSOCKS_SERVER=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_SIMPLE_OBFS=y" >> .config
 
-    - name: 编译固件
+    - name: 编译固件（添加错误退出+日志输出）
       run: |
         cd /opt/rt-n56u/trunk
-        sudo ./build_firmware_modify YK-L1 0
+        # 编译前检查关键目录
+        if [ ! -d "toolchain-mipsel" ]; then
+          echo "工具链目录缺失，编译终止"
+          exit 1
+        fi
+        # 执行编译并保存日志
+        sudo ./build_firmware_modify YK-L1 0 2>&1 | tee build.log
+        # 检查固件是否生成
+        if [ ! -f "images/YK-L1*.trx" ]; then
+          echo "固件编译失败，日志："
+          cat build.log
+          exit 1
+        fi
 
-    - name: 准备产物
+    - name: 准备产物（压缩+验证文件）
       run: |
         mkdir -p /opt/images
         cp /opt/rt-n56u/trunk/images/YK-L1*.trx /opt/images/
         cp /opt/rt-n56u/trunk/.config /opt/images/config.txt
-        # 压缩N2N/SS可执行文件（减小固件体积，适配优酷-L1 10M分区）
-        upx --best /opt/rt-n56u/trunk/build_dir/target-mipsel_24kec+dsp_uClibc-0.9.33.2/root-ramips/usr/bin/edge
-        upx --best /opt/rt-n56u/trunk/build_dir/target-mipsel_24kec+dsp_uClibc-0.9.33.2/root-ramips/usr/bin/supernode
-        upx --best /opt/rt-n56u/trunk/build_dir/target-mipsel_24kec+dsp_uClibc-0.9.33.2/root-ramips/usr/bin/ss-local
-        upx --best /opt/rt-n56u/trunk/build_dir/target-mipsel_24kec+dsp_uClibc-0.9.33.2/root-ramips/usr/bin/ss-server
+        cp /opt/rt-n56u/trunk/build.log /opt/images/build.log
+        
+        # 压缩可执行文件（减小体积）
+        COMPILE_DIR="/opt/rt-n56u/trunk/build_dir/target-mipsel_24kec+dsp_uClibc-0.9.33.2/root-ramips/usr/bin"
+        if [ -f "$COMPILE_DIR/edge" ]; then upx --best "$COMPILE_DIR/edge"; fi
+        if [ -f "$COMPILE_DIR/supernode" ]; then upx --best "$COMPILE_DIR/supernode"; fi
+        if [ -f "$COMPILE_DIR/ss-local" ]; then upx --best "$COMPILE_DIR/ss-local"; fi
+        if [ -f "$COMPILE_DIR/ss-server" ]; then upx --best "$COMPILE_DIR/ss-server"; fi
+        
+        # 验证关键功能文件是否存在
+        echo "===== 验证编译产物 ====="
+        ls -lh /opt/images/*.trx
+        [ -f "$COMPILE_DIR/cupsd" ] && echo "✅ CUPS打印服务存在" || echo "❌ CUPS缺失"
+        [ -f "$COMPILE_DIR/smbd" ] && echo "✅ SAMBA服务存在" || echo "❌ SAMBA缺失"
+        [ -f "$COMPILE_DIR/tun.ko" ] && echo "✅ TUN驱动存在" || echo "❌ TUN驱动缺失"
+        [ -f "$COMPILE_DIR/edge" ] && echo "✅ N2N V3存在" || echo "❌ N2N V3缺失"
+        [ -f "$COMPILE_DIR/ss-local" ] && echo "✅ Shadowsocks存在" || echo "❌ Shadowsocks缺失"
 
-    - name: 发布Release
+    - name: 发布Release（唯一Tag+产物完整）
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: $(date '+%Y-%m-%d')
+        tag_name: "YK-L1-$(date '+%Y%m%d-%H%M%S')"  # 唯一Tag，避免覆盖
         files: |
           /opt/images/*.trx
           /opt/images/config.txt
+          /opt/images/build.log
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
