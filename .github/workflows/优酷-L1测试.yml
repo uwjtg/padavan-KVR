@@ -1,4 +1,4 @@
-name: 优酷-L1
+name: 优酷-L1 测试
 
 on:
   workflow_dispatch:
@@ -41,10 +41,10 @@ jobs:
         echo "CONFIG_FIRMWARE_INCLUDE_EXT4FS=y" >> .config
         echo "CONFIG_FIRMWARE_INCLUDE_SSH_SERVER=y" >> .config
         echo "CONFIG_FIRMWARE_INCLUDE_OPENSSL_EXE=y" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_DDNS=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_DDNS=n" >> .config
         echo "CONFIG_FIRMWARE_INCLUDE_SPEEDTEST=y" >> .config
         echo "CONFIG_FIRMWARE_INCLUDE_TRANSMISSION=n" >> .config  # 已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_FRPC=n" >> .config        # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_FRPC=y" >> .config        # 已删除 请查看/trunk/user/httpd/common.h
         echo "CONFIG_FIRMWARE_INCLUDE_FRPS=n" >> .config        # 已删除 请查看/trunk/user/httpd/common.h
         echo "CONFIG_FIRMWARE_INCLUDE_ALIDDNS=n" >> .config    # 已删除 请查看/trunk/user/httpd/common.h
         echo "CONFIG_FIRMWARE_INCLUDE_SOFTETHER=n" >> .config  # 已删除 请查看/trunk/user/httpd/common.h
