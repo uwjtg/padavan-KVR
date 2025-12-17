@@ -1,4 +1,4 @@
-name: 优酷-L1(hp打印）
+name: 优酷-L1 打印盒子
 
 on: 
   workflow_dispatch:
@@ -23,8 +23,8 @@ jobs:
         sudo apt-get -y install unzip libtool-bin curl cmake gperf gawk flex bison nano xxd fakeroot \
         cpio git python3-docutils gettext automake autopoint texinfo build-essential help2man \
         pkg-config zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev libncurses5-dev libltdl-dev wget
-        # ========== 新增HP打印机/NFS依赖（仅追加） ==========
-        sudo apt-get -y install libcups2-dev libcupsimage2-dev nfs-kernel-server libmbedtls-dev
+        # 仅保留HP打印机依赖（移除NFS依赖，避免冲突）
+        sudo apt-get -y install libcups2-dev libcupsimage2-dev libmbedtls-dev
     - name: Install UPX
       uses: crazy-max/ghaction-upx@v3
       with:
@@ -412,13 +412,13 @@ jobs:
         echo "CONFIG_FIRMWARE_INCLUDE_WXSEND=n" >> .config #微信推送 约50k
         echo "CONFIG_FIRMWARE_INCLUDE_UUPLUGIN=n" >> .config #网易UU加速器 约50k
         
-        echo "CONFIG_FIRMWARE_INCLUDE_ALDRIVER=y" >> .config #阿里云盘 约50k
+        echo "CONFIG_FIRMWARE_INCLUDE_ALDRIVER=n" >> .config #阿里云盘 约50k
         sed -i 's/EVM_RESTART_ALDRIVER/EVM_RESTART_VIRTUALHERE/g' ./user/httpd/common.h
         echo "CONFIG_FIRMWARE_INCLUDE_VIRTUALHERE=y" >> .config #virtualhere 约30k 后期需要自行下载可执行文件 在trunk/user/virtualhere 
         
         echo "CONFIG_FIRMWARE_INCLUDE_WYY=n" >> .config #网易云解锁 约80k 已删除 /trunk/user/httpd/common.h
         echo "CONFIG_FIRMWARE_INCLUDE_BAFA=y" >> .config #巴法云 约90k
-        echo "CONFIG_FIRMWARE_INCLUDE_CADDY=y" >> .config #在线文件管理服务不占空间(4.0kb左右)
+        echo "CONFIG_FIRMWARE_INCLUDE_CADDY=n" >> .config #在线文件管理服务不占空间(4.0kb左右)
         echo "CONFIG_FIRMWARE_INCLUDE_SMARTDNS=n" >> .config #smartdns
         echo "CONFIG_FIRMWARE_INCLUDE_ADGUARDHOME=n" >> .config #adguardhome不占空间(7.2kb左右)
         echo "CONFIG_FIRMWARE_INCLUDE_NETCAT=y" >> .config #nc工具
@@ -434,19 +434,15 @@ jobs:
         #echo "CONFIG_FIRMWARE_INCLUDE_TROJAN=n" >> .config #无需集成会在线下载
         #echo "CONFIG_FIRMWARE_INCLUDE_SSOBFS=n" >> .config # simple-obfs混淆插件
         
-        # ========== 新增所需功能配置（仅追加，不修改原有） ==========
-        ## 1. N2N V3功能
+        # ========== 仅保留HP打印机+N2N V3+SD卡SMB（移除所有NFS相关） ==========
+        ## 1. N2N V3功能（核心需求）
         echo "CONFIG_FIRMWARE_INCLUDE_N2N_V2=n" >> .config
         echo "CONFIG_FIRMWARE_INCLUDE_N2N_V3=y" >> .config
-        ## 2. HP USB打印机增强（补充CUPS核心+打印机驱动）
+        ## 2. HP USB打印机（核心需求，适配HP全系列）
         echo "CONFIG_FIRMWARE_INCLUDE_USB_PRINTER=y" >> .config
         echo "CONFIG_FIRMWARE_INCLUDE_CUPS=y" >> .config
         echo "CONFIG_FIRMWARE_INCLUDE_CUPS_FILTERS=y" >> .config
-        ## 3. SD卡NFS功能（启用完整NFS服务，覆盖原有NFSD=n的注释限制）
-        echo "CONFIG_FIRMWARE_INCLUDE_NFSD=y" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_NFSC=y" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_MOUNT_NFS=y" >> .config
-        ## 4. SD卡自动挂载增强（适配SD卡）
+        ## 3. SD卡/U盘SMB增强（保留SMB，无NFS）
         echo "CONFIG_FIRMWARE_INCLUDE_USB_AUTOMOUNT=y" >> .config
         echo "CONFIG_FIRMWARE_ENABLE_FAT=y" >> .config
         echo "CONFIG_FIRMWARE_ENABLE_EXFAT=y" >> .config
