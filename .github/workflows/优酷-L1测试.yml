@@ -1,0 +1,128 @@
+name: 优酷-L1
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v3
+
+    - name: 安装编译依赖
+      run: |
+        sudo apt update -y
+        sudo apt full-upgrade -y
+        # 新增USB打印机/Shadowsocks依赖：libcups2-dev（打印机）、libsodium-dev/mbedtls-dev（SS）
+        sudo apt install -y build-essential git unzip libtool-bin automake autoconf pkg-config libssl-dev libpcap-dev upx-ucl libusb-1.0-0-dev libcups2-dev libsodium-dev mbedtls-dev
+        sudo apt autoremove -y
+        sudo apt clean -y
+
+    - name: 克隆源码
+      run: |
+        git clone --depth=1 https://github.com/${GITHUB_REPOSITORY}.git /opt/rt-n56u
+        cd /opt/rt-n56u/trunk
+        sh dl_toolchain.sh
+
+    - name: 修改存储分区
+      run: |
+        cd /opt/rt-n56u/trunk
+        sed -i 's/0x0f00000/0x1500000/g' board/YK-L1/profile.mk
+
+    - name: 配置固件功能
+      run: |
+        cd /opt/rt-n56u/trunk
+        sed -i '/CONFIG_FIRMWARE_INCLUDE_OPENSSL_EXE/d' .config
+        # 原有配置项完全保留
+        echo "CONFIG_FIRMWARE_INCLUDE_IPV6=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_EXT3FS=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_EXT4FS=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_SSH_SERVER=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_OPENSSL_EXE=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_DDNS=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_SPEEDTEST=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_TRANSMISSION=n" >> .config  # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_FRPC=n" >> .config        # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_FRPS=n" >> .config        # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_ALIDDNS=n" >> .config    # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_SOFTETHER=n" >> .config  # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_V2RAY=n" >> .config      # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_TROJAN=n" >> .config     # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_SSR=n" >> .config        # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_SSSERVER=n" >> .config   # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_CADDY=n" >> .config      # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_ADBYBY=n" >> .config     # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_KOOLPROXY=n" >> .config  # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_SQM_QOS=n" >> .config    # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_DNSFORWARDER=n" >> .config # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_ADGUARDHOME=n" >> .config # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_SAMBA_V2=n" >> .config   # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_SAMBA_V3=n" >> .config   # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_MINIDLNA=n" >> .config   # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_IGD=n" >> .config        # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_UPNP=n" >> .config       # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_DLNADMR=n" >> .config    # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_ES_FILE_EXPLORER=n" >> .config # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_YOU_GET=n" >> .config    # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_YYEPG=n" >> .config      # 已删除 请查看/trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_MENTOHUST=n" >> .config  ##南京校园？
+        echo "CONFIG_FIRMWARE_INCLUDE_CHAPERONE=n" >> .config  # 已删除 请查看/trunk/user/httpd/common.h
+        
+        # ========== 新增所需功能配置项 ==========
+        # 1. N2N V3（禁用V2避免冲突）
+        echo "CONFIG_FIRMWARE_INCLUDE_N2N_V2=n" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_N2N_V3=y" >> .config
+        
+        # 2. VNT（虚拟网卡）- TUN/TAP驱动
+        echo "CONFIG_FIRMWARE_INCLUDE_TUN=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_TAP=y" >> .config
+        
+        # 3. USB完整功能（含打印机+U盘）
+        echo "CONFIG_FIRMWARE_INCLUDE_USB_CORE=y" >> .config          # USB核心驱动
+        echo "CONFIG_FIRMWARE_INCLUDE_USB_STORAGE=y" >> .config       # U盘存储
+        echo "CONFIG_FIRMWARE_INCLUDE_USB_UAS=y" >> .config           # 高速USB存储
+        echo "CONFIG_FIRMWARE_INCLUDE_USB_HID=y" >> .config           # USB HID（打印机基础）
+        echo "CONFIG_FIRMWARE_INCLUDE_USB_AUTOMOUNT=y" >> .config     # U盘自动挂载
+        echo "CONFIG_FIRMWARE_INCLUDE_FAT32=y" >> .config             # U盘FAT32支持
+        echo "CONFIG_FIRMWARE_INCLUDE_NTFS=y" >> .config              # U盘NTFS支持
+        echo "CONFIG_FIRMWARE_INCLUDE_EXFAT=y" >> .config             # U盘exFAT支持
+        echo "CONFIG_FIRMWARE_INCLUDE_USB_PRINTER=y" >> .config       # USB打印机（HP适配）
+        echo "CONFIG_FIRMWARE_INCLUDE_CUPS=y" >> .config              # CUPS打印服务（HP打印机核心）
+        
+        # 4. U盘SMB共享（重新启用SAMBA V3，适配U盘共享）
+        echo "CONFIG_FIRMWARE_INCLUDE_SAMBA_V3=y" >> .config          # SMB核心（V3兼容性更好）
+        echo "CONFIG_FIRMWARE_INCLUDE_SAMBA_AUTOSHARE=y" >> .config   # U盘自动SMB共享
+        
+        # 5. Shadowsocks（SS）- 替代SSR，含客户端+服务端
+        echo "CONFIG_FIRMWARE_INCLUDE_SHADOWSOCKS=y" >> .config       # SS核心
+        echo "CONFIG_FIRMWARE_INCLUDE_SHADOWSOCKS_CLIENT=y" >> .config # SS客户端
+        echo "CONFIG_FIRMWARE_INCLUDE_SHADOWSOCKS_SERVER=y" >> .config # SS服务端
+        echo "CONFIG_FIRMWARE_INCLUDE_SIMPLE_OBFS=y" >> .config       # SS混淆插件（提升稳定性）
+
+    - name: 编译固件
+      run: |
+        cd /opt/rt-n56u/trunk
+        sudo ./build_firmware_modify YK-L1 0
+
+    - name: 准备产物
+      run: |
+        mkdir -p /opt/images
+        cp /opt/rt-n56u/trunk/images/YK-L1*.trx /opt/images/
+        cp /opt/rt-n56u/trunk/.config /opt/images/config.txt
+        # 压缩N2N/SS可执行文件（减小固件体积，适配优酷-L1 10M分区）
+        upx --best /opt/rt-n56u/trunk/build_dir/target-mipsel_24kec+dsp_uClibc-0.9.33.2/root-ramips/usr/bin/edge
+        upx --best /opt/rt-n56u/trunk/build_dir/target-mipsel_24kec+dsp_uClibc-0.9.33.2/root-ramips/usr/bin/supernode
+        upx --best /opt/rt-n56u/trunk/build_dir/target-mipsel_24kec+dsp_uClibc-0.9.33.2/root-ramips/usr/bin/ss-local
+        upx --best /opt/rt-n56u/trunk/build_dir/target-mipsel_24kec+dsp_uClibc-0.9.33.2/root-ramips/usr/bin/ss-server
+
+    - name: 发布Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: $(date '+%Y-%m-%d')
+        files: |
+          /opt/images/*.trx
+          /opt/images/config.txt
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
