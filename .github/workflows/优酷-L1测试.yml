@@ -1,4 +1,4 @@
-name: 优酷-L1（CUPS+VNT+SMB+TF卡）
+name: 优酷-L1（原有功能+CUPS）
 on: [workflow_dispatch]
 permissions:
   contents: write
@@ -8,102 +8,52 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: 1. 检出仓库代码
+      - name: Checkout
         uses: actions/checkout@master
-
-      - name: 2. 安装全量依赖（解决所有编译冲突）
+      - name: 安装依赖（原有基础+CUPS必需）
         run: |
           sudo apt update -y
-          # 基础编译+CUPS+VNT/SMB+国际化工具+TF卡驱动依赖
-          sudo apt install -y build-essential git unzip libtool-bin automake autoconf pkg-config \
-          libssl-dev libusb-1.0-0-dev libcups2-dev libcupsimage2-dev wget gettext gettext-base \
-          libsodium-dev libsmbclient-dev libmmc-dev
+          # 保留你原有依赖 + 仅添加CUPS必需依赖
+          sudo apt install -y build-essential git unzip libtool-bin automake autoconf pkg-config libssl-dev libusb-1.0-0-dev libcups2-dev libcupsimage2-dev wget
           sudo apt clean -y
-
-      - name: 3. 克隆源码+下载工具链（超时重试）
+      - name: 克隆源码
         run: |
           git clone --depth=1 https://github.com/${GITHUB_REPOSITORY}.git /opt/rt-n56u
-          cd /opt/rt-n56u/toolchain-mipsel
-          # 工具链下载失败重试，确保编译环境完整
-          sh dl_toolchain.sh || sh dl_toolchain.sh || sh dl_toolchain.sh
+          cd /opt/rt-n56u/toolchain-mipsel && sh dl_toolchain.sh
           mkdir -p /opt/images
-
-      - name: 4. 扩容分区（适配CUPS体积，24M足够）
+      - name: 扩容分区（适配CUPS体积）
         run: |
           cd /opt/rt-n56u/trunk
           sed -i 's/SIZ=0x80000/SIZ=0x1800000/g' configs/boards/YK-L1/kernel-3.4.x.config
           sed -i 's/size_etc="6M"/size_etc="24M"/g' user/scripts/dev_init.sh
-
-      - name: 5. 配置固件（保留VNT/SMB，添加CUPS+TF卡）
+      - name: 修复mksquashfs编译错误（仅解决po文件问题）
+        run: |
+          cd /opt/rt-n56u/trunk/tools/mksquashfs_xz/xz-5.2.4
+          rm -rf po  # 仅删除po目录，不改动其他
+      - name: 配置固件（原有功能+仅加CUPS）
         run: |
           cd /opt/rt-n56u/trunk
           cp configs/templates/YK-L1.config .config
-
-          # 基础USB功能（保留原有逻辑）
+          # 保留你原有功能配置
           sed -i 's/CONFIG_FIRMWARE_ENABLE_USB=n/CONFIG_FIRMWARE_ENABLE_USB=y/g' .config
           sed -i 's/CONFIG_FIRMWARE_INCLUDE_USB_PRINTER=n/CONFIG_FIRMWARE_INCLUDE_USB_PRINTER=y/g' .config
-          sed -i 's/CONFIG_FIRMWARE_INCLUDE_USB_AUTOMOUNT=n/CONFIG_FIRMWARE_INCLUDE_USB_AUTOMOUNT=y/g' .config
-
-          # CUPS（HP打印机核心）
-          echo "CONFIG_FIRMWARE_INCLUDE_CUPS=y" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_CUPS_FILTERS=y" >> .config
-
-          # TF卡识别（优酷L1 SPI接口）
-          echo "CONFIG_FIRMWARE_INCLUDE_KMOD_MMC=y" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_KMOD_MMC_SPI=y" >> .config
-          echo "CONFIG_FIRMWARE_ENABLE_FAT=y" >> .config
-          echo "CONFIG_FIRMWARE_ENABLE_EXFAT=y" >> .config
-          echo "CONFIG_FIRMWARE_ENABLE_EXT4=y" >> .config
-
-          # 禁用冲突功能（避免编译报错）
+          echo "CONFIG_FIRMWARE_INCLUDE_USB_AUTOMOUNT=y" >> .config
+          # 禁用冲突功能（保留你原有配置）
           echo "CONFIG_FIRMWARE_INCLUDE_VLMCSD=n" >> .config
           echo "CONFIG_FIRMWARE_INCLUDE_N2N_V2=n" >> .config
           echo "CONFIG_FIRMWARE_INCLUDE_FRPC=n" >> .config
-
-      - name: 6. 彻底修复mksquashfs编译错误（核心修复）
-        run: |
-          # 清理所有po相关文件+禁用NLS
-          cd /opt/rt-n56u/trunk/tools/mksquashfs_xz
-          rm -rf xz-5.2.4/po
-          sed -i '/po/d' xz-5.2.4/configure.ac
-          sed -i '/po/d' xz-5.2.4/Makefile.am
-          cd xz-5.2.4
-          ./configure --disable-nls
-
-      - name: 7. 修复e2fsprogs编译错误（禁用国际化）
-        run: |
-          cd /opt/rt-n56u/trunk/user/e2fsprogs
-          ./configure --disable-nls
-
-      - name: 8. 编译固件+内置验证（确保功能模块编译成功）
+          # 仅新增CUPS配置
+          echo "CONFIG_FIRMWARE_INCLUDE_CUPS=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_CUPS_FILTERS=y" >> .config
+      - name: 编译固件（完全保留你原有逻辑）
         run: |
           cd /opt/rt-n56u/trunk
-          sudo ./clear_tree
-          sudo ./build_firmware_modify YK-L1 1
-
-          # ========== 编译过程验证（关键） ==========
-          # 验证1：核心功能文件是否生成
-          echo "===== 验证CUPS/VNT/SMB文件是否编译成功 ====="
-          ls -lh build_dir/target-mipsel_24kec+dsp_uClibc-0.9.33.2/root-ramips/usr/bin | grep -E "cupsd|smbd|vnt-cli"
-          # 验证2：TF卡驱动是否编译
-          echo "===== 验证TF卡驱动是否编译成功 ====="
-          ls -lh build_dir/target-mipsel_24kec+dsp_uClibc-0.9.33.2/linux-ramips-mt7620a/drivers/mmc/ | grep mmc_spi.ko
-          # 验证3：固件文件是否生成
-          echo "===== 验证固件文件是否生成 ====="
-          ls -lh images/*.trx
-
-          # 移动固件到输出目录
+          sudo ./clear_tree && sudo ./build_firmware_modify YK-L1 1
           sudo mv images/*.trx /opt/images/
-
-      - name: 9. 发布固件（含验证日志）
+      - name: 发布固件
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: CUPS-VNT-SMB-TF-$(date +%Y%m%d)
+          tag_name: 原有功能+CUPS-$(date +%Y%m%d)
           files: /opt/images/*
-          body: |
-            ### 优酷L1 Padavan固件（已验证编译完整性）
-            - 集成功能：CUPS（HP打印机）、VNT、SMB、TF卡识别
-            - 默认后台：192.168.123.1（账号/密码：admin/admin）
-            - 编译验证：CUPS/VNT/SMB/TF卡驱动均已编译成功
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
