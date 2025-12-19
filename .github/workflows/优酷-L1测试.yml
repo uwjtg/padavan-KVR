@@ -1,8 +1,5 @@
-name: 优酷-L1 打印
-
-on: 
-  workflow_dispatch:
-
+name: 优酷-L1（CUPS+HP打印机）
+on: [workflow_dispatch]
 permissions:
   contents: write
 env:
@@ -10,103 +7,47 @@ env:
 jobs:
   build:
     runs-on: ubuntu-22.04
-
     steps:
-    - name: Checkout
-      uses: actions/checkout@master
-    - name: Initialization environment
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
-        sudo apt-get update
-        sudo apt-get -y install unzip libtool-bin curl cmake gperf gawk flex bison nano xxd fakeroot \
-        cpio git python3-docutils gettext automake autopoint texinfo build-essential help2man \
-        pkg-config zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev libncurses5-dev libltdl-dev wget
-        # 安装CUPS/N2N依赖（必须）
-        sudo apt-get -y install libcups2-dev libcupsimage2-dev libmbedtls-dev libsodium-dev
-    - name: Install UPX
-      uses: crazy-max/ghaction-upx@v3
-      with:
-        version: v4.2.4
-        install-only: true
-    - name: Clone source code
-      env:
-        KERNEL: 3.4
-      run: |
-        git clone --depth=1 https://github.com/${GITHUB_REPOSITORY}.git /opt/rt-n56u
-        cd /opt/rt-n56u/toolchain-mipsel
-        sh dl_toolchain.sh
-        mkdir -p /opt/images/
-        
-        # 扩容存储分区（确保固件能装下所有功能）
-        sed -i 's/SIZ=0x80000/SIZ=0x1800000/g' /opt/rt-n56u/trunk/configs/boards/YK-L1/kernel-3.4.x.config
-        sed -i 's/size_etc="6M"/size_etc="24M"/g' /opt/rt-n56u/trunk/user/scripts/dev_init.sh
-        sed -i 's/size_tmp="24M"/size_tmp="32M"/g' /opt/rt-n56u/trunk/user/scripts/dev_init.sh
-        sed -i 's/mtd_part_size=65536/mtd_part_size=25165824/g' /opt/rt-n56u/trunk/user/scripts/mtd_storage.sh
-    - name: Build Firmware
-      env:
-        TNAME: YK-L1
-        KERNEL: 3.4
-      run: |
-        cd /opt/rt-n56u/trunk
-        # 关键：保留模板配置，仅修改需要的项（不再清除所有配置）
-        cp -f configs/templates/$TNAME.config .config
-        
-        # 启用核心基础功能（确保USB/存储/网络正常）
-        sed -i 's/CONFIG_FIRMWARE_ENABLE_IPV6=n/CONFIG_FIRMWARE_ENABLE_IPV6=y/g' .config
-        sed -i 's/CONFIG_FIRMWARE_ENABLE_USB=n/CONFIG_FIRMWARE_ENABLE_USB=y/g' .config
-        sed -i 's/CONFIG_FIRMWARE_ENABLE_EXT3=n/CONFIG_FIRMWARE_ENABLE_EXT3=y/g' .config
-        sed -i 's/CONFIG_FIRMWARE_ENABLE_EXT4=n/CONFIG_FIRMWARE_ENABLE_EXT4=y/g' .config
-        sed -i 's/CONFIG_FIRMWARE_ENABLE_FUSE=n/CONFIG_FIRMWARE_ENABLE_FUSE=y/g' .config
-        sed -i 's/CONFIG_FIRMWARE_ENABLE_SWAP=n/CONFIG_FIRMWARE_ENABLE_SWAP=y/g' .config
-        
-        # 启用SMB（SD卡共享核心）
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SMBD=n/CONFIG_FIRMWARE_INCLUDE_SMBD=y/g' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SMBD36=n/CONFIG_FIRMWARE_INCLUDE_SMBD36=y/g' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_USB_AUTOMOUNT=n/CONFIG_FIRMWARE_INCLUDE_USB_AUTOMOUNT=y/g' .config
-        sed -i 's/CONFIG_FIRMWARE_ENABLE_FAT=n/CONFIG_FIRMWARE_ENABLE_FAT=y/g' .config
-        sed -i 's/CONFIG_FIRMWARE_ENABLE_EXFAT=n/CONFIG_FIRMWARE_ENABLE_EXFAT=y/g' .config
-        
-        # 启用HP打印机（CUPS核心）
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_LPRD=n/CONFIG_FIRMWARE_INCLUDE_LPRD=y/g' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_U2EC=n/CONFIG_FIRMWARE_INCLUDE_U2EC=y/g' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_USB_PRINTER=n/CONFIG_FIRMWARE_INCLUDE_USB_PRINTER=y/g' .config
-        echo "CONFIG_FIRMWARE_INCLUDE_CUPS=y" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_CUPS_FILTERS=y" >> .config
-        
-        # 启用N2N V3（核心功能）
-        echo "CONFIG_FIRMWARE_INCLUDE_N2N_V2=n" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_N2N_V3=y" >> .config
-        
-        # 保留你原始需要的功能（FRP/VNT等）
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_FRPC=n/CONFIG_FIRMWARE_INCLUDE_FRPC=y/g' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_VNTCLI=n/CONFIG_FIRMWARE_INCLUDE_VNTCLI=y/g' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_OPENSSL_EXE=n/CONFIG_FIRMWARE_INCLUDE_OPENSSL_EXE=y/g' .config
-        
-        # 编译固件（强制编译所有选中模块）
-        sudo ./clear_tree
-        sudo ./build_firmware_modify $TNAME 1  # 1=强制编译所有模块
-        sudo mv -f images/*.trx /opt/images/
-        cp -f .config /opt/images/${TNAME}.config
-        
-        # 验证编译产物（确认功能文件存在）
-        ls -lh /opt/rt-n56u/trunk/build_dir/target-mipsel_24kec+dsp_uClibc-0.9.33.2/root-ramips/usr/bin | grep -E "cupsd|smbd|edge|supernode"
-        echo "build_time=$(date '+%Y年%m月%d日%H:%M:%S' | jq -sRr @uri)" >> $GITHUB_ENV
-        echo "tag=$(date '+%Y-%m-%d')" >> $GITHUB_ENV
-    - name : Upload packages
-      uses: actions/upload-artifact@master
-      if: always()
-      with:
-        name: YK-L1
-        path: /opt/images
-
-    - name: Release
-      uses: softprops/action-gh-release@v2
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        body: |
-           > ### ![](https://img.shields.io/badge/%E7%BC%96%E8%AF%91%E6%97%B6%E9%97%B4-${{ env.build_time }}-8267?logo=github&labelColor=%E9%A1%BB)![](https://img.shields.io/github/downloads/${{ github.repository }}/${{ env.tag }}/total?label=%E4%B8%8B%E8%BD%BD%E6%AC%A1%E6%95%B0&logo=github)
-           - 集成功能：CUPS(HP打印机)、N2N V3、SMB(SD卡)、FRPC
-           - 固件分区：24M（足够装下所有功能）
-        tag_name: ${{ env.tag }}
-        files: /opt/images/*
+      - name: Checkout
+        uses: actions/checkout@master
+      - name: 安装依赖（仅CUPS+基础编译）
+        run: |
+          sudo apt update -y
+          sudo apt install -y build-essential git unzip libtool-bin automake autoconf pkg-config libssl-dev libusb-1.0-0-dev libcups2-dev libcupsimage2-dev wget
+          sudo apt clean -y
+      - name: 克隆源码
+        run: |
+          git clone --depth=1 https://github.com/${GITHUB_REPOSITORY}.git /opt/rt-n56u
+          cd /opt/rt-n56u/toolchain-mipsel && sh dl_toolchain.sh
+          mkdir -p /opt/images
+      - name: 扩容分区（适配CUPS体积）
+        run: |
+          cd /opt/rt-n56u/trunk
+          sed -i 's/SIZ=0x80000/SIZ=0x1800000/g' configs/boards/YK-L1/kernel-3.4.x.config
+          sed -i 's/size_etc="6M"/size_etc="24M"/g' user/scripts/dev_init.sh
+      - name: 配置固件（仅启用CUPS+USB）
+        run: |
+          cd /opt/rt-n56u/trunk
+          cp configs/templates/YK-L1.config .config
+          # 启用核心功能
+          sed -i 's/CONFIG_FIRMWARE_ENABLE_USB=n/CONFIG_FIRMWARE_ENABLE_USB=y/g' .config
+          sed -i 's/CONFIG_FIRMWARE_INCLUDE_USB_PRINTER=n/CONFIG_FIRMWARE_INCLUDE_USB_PRINTER=y/g' .config
+          echo "CONFIG_FIRMWARE_INCLUDE_CUPS=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_CUPS_FILTERS=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_USB_AUTOMOUNT=y" >> .config
+          # 禁用所有冲突功能
+          echo "CONFIG_FIRMWARE_INCLUDE_VLMCSD=n" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_N2N_V2=n" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_FRPC=n" >> .config
+      - name: 编译固件
+        run: |
+          cd /opt/rt-n56u/trunk
+          sudo ./clear_tree && sudo ./build_firmware_modify YK-L1 1
+          sudo mv images/*.trx /opt/images/
+      - name: 发布固件
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: CUPS-$(date +%Y%m%d)
+          files: /opt/images/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
