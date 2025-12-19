@@ -13,7 +13,6 @@ jobs:
       - name: 安装依赖（仅CUPS+基础编译，补充VNT/SMB依赖）
         run: |
           sudo apt update -y
-          # 保留原有依赖 + 新增VNT/SMB必需依赖（不影响原有编译逻辑）
           sudo apt install -y build-essential git unzip libtool-bin automake autoconf pkg-config libssl-dev libusb-1.0-0-dev libcups2-dev libcupsimage2-dev wget libsodium-dev libsmbclient-dev
           sudo apt clean -y
       - name: 克隆源码
@@ -24,7 +23,6 @@ jobs:
       - name: 扩容分区（适配CUPS+VNT+SMB体积，仅微调数值）
         run: |
           cd /opt/rt-n56u/trunk
-          # 原24M扩容至28M，足够容纳VNT+SMB，不破坏原有逻辑
           sed -i 's/SIZ=0x80000/SIZ=0x1C00000/g' configs/boards/YK-L1/kernel-3.4.x.config
           sed -i 's/size_etc="6M"/size_etc="28M"/g' user/scripts/dev_init.sh
       - name: 配置固件（保留CUPS，新增VNT+SMB，禁用冲突功能）
@@ -52,6 +50,10 @@ jobs:
           echo "CONFIG_FIRMWARE_INCLUDE_VLMCSD=n" >> .config
           echo "CONFIG_FIRMWARE_INCLUDE_N2N_V2=n" >> .config
           echo "CONFIG_FIRMWARE_INCLUDE_FRPC=n" >> .config
+      - name: 修复mksquashfs编译错误（禁用国际化）
+        run: |
+          cd /opt/rt-n56u/trunk/tools/mksquashfs_xz/xz-5.2.4
+          rm -rf po  # 删除国际化翻译目录，跳过.gmo文件生成
       - name: 编译固件
         run: |
           cd /opt/rt-n56u/trunk
