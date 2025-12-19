@@ -1,4 +1,4 @@
-name: 优酷-L1（CUPS+HP打印机）
+name: 优酷-L1（CUPS+VNT+SMB）
 on: [workflow_dispatch]
 permissions:
   contents: write
@@ -10,32 +10,45 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@master
-      - name: 安装依赖（仅CUPS+基础编译）
+      - name: 安装依赖（仅CUPS+基础编译，补充VNT/SMB依赖）
         run: |
           sudo apt update -y
-          sudo apt install -y build-essential git unzip libtool-bin automake autoconf pkg-config libssl-dev libusb-1.0-0-dev libcups2-dev libcupsimage2-dev wget
+          # 保留原有依赖 + 新增VNT/SMB必需依赖（不影响原有编译逻辑）
+          sudo apt install -y build-essential git unzip libtool-bin automake autoconf pkg-config libssl-dev libusb-1.0-0-dev libcups2-dev libcupsimage2-dev wget libsodium-dev libsmbclient-dev
           sudo apt clean -y
       - name: 克隆源码
         run: |
           git clone --depth=1 https://github.com/${GITHUB_REPOSITORY}.git /opt/rt-n56u
           cd /opt/rt-n56u/toolchain-mipsel && sh dl_toolchain.sh
           mkdir -p /opt/images
-      - name: 扩容分区（适配CUPS体积）
+      - name: 扩容分区（适配CUPS+VNT+SMB体积，仅微调数值）
         run: |
           cd /opt/rt-n56u/trunk
-          sed -i 's/SIZ=0x80000/SIZ=0x1800000/g' configs/boards/YK-L1/kernel-3.4.x.config
-          sed -i 's/size_etc="6M"/size_etc="24M"/g' user/scripts/dev_init.sh
-      - name: 配置固件（仅启用CUPS+USB）
+          # 原24M扩容至28M，足够容纳VNT+SMB，不破坏原有逻辑
+          sed -i 's/SIZ=0x80000/SIZ=0x1C00000/g' configs/boards/YK-L1/kernel-3.4.x.config
+          sed -i 's/size_etc="6M"/size_etc="28M"/g' user/scripts/dev_init.sh
+      - name: 配置固件（保留CUPS，新增VNT+SMB，禁用冲突功能）
         run: |
           cd /opt/rt-n56u/trunk
           cp configs/templates/YK-L1.config .config
-          # 启用核心功能
+          # 启用核心功能（保留原有CUPS配置，新增VNT+SMB）
           sed -i 's/CONFIG_FIRMWARE_ENABLE_USB=n/CONFIG_FIRMWARE_ENABLE_USB=y/g' .config
           sed -i 's/CONFIG_FIRMWARE_INCLUDE_USB_PRINTER=n/CONFIG_FIRMWARE_INCLUDE_USB_PRINTER=y/g' .config
           echo "CONFIG_FIRMWARE_INCLUDE_CUPS=y" >> .config
           echo "CONFIG_FIRMWARE_INCLUDE_CUPS_FILTERS=y" >> .config
           echo "CONFIG_FIRMWARE_INCLUDE_USB_AUTOMOUNT=y" >> .config
-          # 禁用所有冲突功能
+          
+          # ========== 新增VNT+SMB配置（核心修改） ==========
+          # 1. SMB（SD/U盘共享，兼容原有逻辑）
+          sed -i 's/CONFIG_FIRMWARE_INCLUDE_SMBD=n/CONFIG_FIRMWARE_INCLUDE_SMBD=y/g' .config
+          sed -i 's/CONFIG_FIRMWARE_INCLUDE_SMBD36=n/CONFIG_FIRMWARE_INCLUDE_SMBD36=y/g' .config
+          echo "CONFIG_FIRMWARE_ENABLE_FAT=y" >> .config
+          echo "CONFIG_FIRMWARE_ENABLE_EXFAT=y" >> .config
+          # 2. VNT（组网功能，仅启用客户端，无冲突）
+          echo "CONFIG_FIRMWARE_INCLUDE_VNTCLI=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_VNTS=n" >> .config
+          
+          # 禁用所有冲突功能（保留原有配置，无新增）
           echo "CONFIG_FIRMWARE_INCLUDE_VLMCSD=n" >> .config
           echo "CONFIG_FIRMWARE_INCLUDE_N2N_V2=n" >> .config
           echo "CONFIG_FIRMWARE_INCLUDE_FRPC=n" >> .config
@@ -47,7 +60,7 @@ jobs:
       - name: 发布固件
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: CUPS-$(date +%Y%m%d)
+          tag_name: CUPS-VNT-SMB-$(date +%Y%m%d)
           files: /opt/images/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
