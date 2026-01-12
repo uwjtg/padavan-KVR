@@ -7,11 +7,11 @@ on:
       - '.github/workflows/MI-NANO.yml'
   pull_request:
     branches: [ main ]
-  workflow_dispatch: # 手动触发编译（推荐）
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04 # 兼容性最优，避免编译报错
+    runs-on: ubuntu-20.04
     steps:
       - name: 1. 检出源码
         uses: actions/checkout@v4
@@ -20,99 +20,51 @@ jobs:
           submodules: true
           fetch-depth: 1
 
-      - name: 2. 安装编译依赖（最小化依赖，保证编译正常）
+      - name: 2. 安装编译依赖
         run: |
           sudo apt update
           sudo apt install -y build-essential git gawk gcc-multilib flex bison gettext libncurses5-dev libssl-dev zlib1g-dev unzip python3
-          sudo apt clean && sudo rm -rf /var/lib/apt/lists/*
+          sudo apt clean
 
-      - name: 3. 适配NANO硬件（64MB RAM/16MB闪存，必改）
+      - name: 3. 适配NANO硬件（MT7628AN+16MB闪存+64MB RAM）
         run: |
           cd /home/runner/work/padavan-KVR/padavan-KVR/opt/rt-n56u/trunk
-          # 核心：/tmp分区改为16M，避免内存溢出（64MB RAM必改）
-          sed -i 's/size_tmp="24M"/size_tmp="16M"/g' user/scripts/dev_init.sh
-          # 精简/etc分区为5M，释放闪存空间
+          # 替换为MI-NANO对应的内核配置（MT7628AN专用）
+          sed -i 's/size_tmp="24M"/size_tmp="16M"/g' configs/boards/MI-NANO/kernel-3.4.x.config
           sed -i 's/size_etc="6M"/size_etc="5M"/g' user/scripts/dev_init.sh
-          # 内核SIZ保留默认，避免启动问题
-          sed -i 's/SIZ=0x80000/SIZ=0x80000/g' configs/boards/MI-MINI/kernel-3.4.x.config
 
-      - name: 4. 清除默认配置+写入精简配置（仅保留目标功能）
+      - name: 4. 精简配置（仅保留目标功能）
         run: |
           cd /home/runner/work/padavan-KVR/padavan-KVR/opt/rt-n56u/trunk
-          ######################################################################
-          # 清除所有默认配置，避免冗余
-          ######################################################################
           sed -i '/CONFIG_FIRMWARE_/d' .config
           
-          ######################################################################
-          # 基础依赖（目标功能必需，不可删）
-          ######################################################################
-          echo "CONFIG_FIRMWARE_ENABLE_IPV6=y" >> .config # OpenVPN/EasyTier必需
-          echo "CONFIG_FIRMWARE_INCLUDE_OPENSSL_EC=y" >> .config # SSH/VPN加密必需
-          echo "CONFIG_FIRMWARE_INCLUDE_OPENSSL_EXE=y" >> .config # SSH/VPN证书必需
-          echo "CONFIG_FIRMWARE_INCLUDE_DDNS_SSL=y" >> .config # 基础SSL支持
-          echo "CONFIG_FIRMWARE_INCLUDE_HTTPS=y" >> .config # 基础HTTPS支持
-
-          ######################################################################
-          # 核心保留功能：SSH/curl/VNT/VPN/EasyTier/LUCKY
-          ######################################################################
-          # 1. SSH（Dropbear，轻量版，满足基础登录/传输）
+          # 基础依赖
+          echo "CONFIG_FIRMWARE_ENABLE_IPV6=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_OPENSSL_EC=y" >> .config
+          echo "CONFIG_FIRMWARE_INCLUDE_OPENSSL_EXE=y" >> .config
+          
+          # 核心功能
           echo "CONFIG_FIRMWARE_INCLUDE_DROPBEAR=y" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_DROPBEAR_FAST_CODE=y" >> .config # SSH加速
-          
-          # 2. curl（必备工具，VNT/EasyTier/LUCKY网络请求依赖）
           echo "CONFIG_FIRMWARE_INCLUDE_CURL=y" >> .config
-          
-          # 3. VNT（仅开启客户端，服务端关闭，贴合日常使用）
           echo "CONFIG_FIRMWARE_INCLUDE_VNTCLI=y" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_VNTS=n" >> .config
-          
-          # 4. VPN（OpenVPN，适配性最好，轻量稳定，依赖IPv6/SSL）
           echo "CONFIG_FIRMWARE_INCLUDE_OPENVPN=y" >> .config
-          
-          # 5. EasyTier（异地组网，保留核心功能）
           echo "CONFIG_FIRMWARE_INCLUDE_EASYTIER=y" >> .config
-          
-          # 6. LUCKY（多功能工具，保留核心）
           echo "CONFIG_FIRMWARE_INCLUDE_LUCKY=y" >> .config
 
-          ######################################################################
-          # 所有非核心功能：全部关闭（精简体积，保证16MB闪存够用）
-          ######################################################################
-          echo "CONFIG_FIRMWARE_ENABLE_USB=n" >> .config # NANO无USB，彻底关闭
-          echo "CONFIG_FIRMWARE_ENABLE_FAT=n" >> .config
-          echo "CONFIG_FIRMWARE_ENABLE_EXT4=n" >> .config
+          # 关闭所有无关功能
+          echo "CONFIG_FIRMWARE_ENABLE_USB=n" >> .config
           echo "CONFIG_FIRMWARE_INCLUDE_SMBD=n" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_FTPD=n" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_TCPDUMP=n" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_FRPC=n" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_FRPS=n" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_WIREGUARD=n" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_ZEROTIER=n" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_ALIDDNS=n" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_WXSEND=n" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_BAFA=n" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_MSD_LITE=n" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_VIRTUALHERE=n" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_XFRM=n" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_QOS=n" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_NAPT66=n" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_TTYD=n" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_HTOP=n" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_IPERF3=n" >> .config
-          echo "CONFIG_FIRMWARE_INCLUDE_MTR=n" >> .config
 
-      - name: 5. 编译固件（BOARD沿用MI-MINI，源码共用配置）
+      - name: 5. 编译固件（BOARD为MI-NANO，MT7628AN专用）
         run: |
           cd /home/runner/work/padavan-KVR/padavan-KVR/opt/rt-n56u/trunk
-          ./clear_tree.sh # 清除旧编译文件
-          ./build_firmware_modify.sh MI-MINI # 核心编译命令
-          # 重命名产物，明确精简版+功能标识
-          mv images/*.trx images/mi-nano_padavan_minimal_SSH-VNT-VPN-EasyTier-LUCKY.trx
+          ./clear_tree.sh
+          ./build_firmware_modify.sh MI-NANO  # 关键：BOARD改为MI-NANO
+          mv images/*.trx images/mi-nano_padavan_mt7628an.trx
 
-      - name: 6. 上传编译产物（保留30天，方便下载）
+      - name: 6. 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: MI-NANO-Padavan-Minimal
-          path: /home/runner/work/padavan-KVR/padavan-KVR/opt/rt-n56u/trunk/images/mi-nano_padavan_minimal_SSH-VNT-VPN-EasyTier-LUCKY.trx
+          name: MI-NANO-Padavan-MT7628AN
+          path: /home/runner/work/padavan-KVR/padavan-KVR/opt/rt-n56u/trunk/images/mi-nano_padavan_mt7628an.trx
           retention-days: 30
